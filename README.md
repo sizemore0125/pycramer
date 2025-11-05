@@ -1,3 +1,4 @@
+[![GPLv3 license](https://img.shields.io/badge/License-GPLv3-blue.svg)](http://perso.crans.org/besson/LICENSE.html)
 ## Attribution
 
 This Python implementation of the Cramér two-sample test is based on the R package authored and maintained by Carsten Franz <carsten.franz@gmail.com>. All descriptive text below is reproduced from the original documentation provided with that package.
