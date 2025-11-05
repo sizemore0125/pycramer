@@ -1,6 +1,6 @@
 ## Attribution
 
-This Python implementation of the Cramér two-sample test is based on the Python package authored and maintained by Carsten Franz <carsten.franz@gmail.com>. All descriptive text below is reproduced from the original documentation provided with that package.
+This Python implementation of the Cramér two-sample test is based on the R package authored and maintained by Carsten Franz <carsten.franz@gmail.com>. All descriptive text below is reproduced from the original documentation provided with that package.
 
 ## Cramer-Test for uni- and multivariate two-sample-problem
 
