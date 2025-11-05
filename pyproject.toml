@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pycramer"
-version = "0.1.0"
+version = "0.1.1"
 description = "Cramer two-sample test for univariate and multivariate datasets in Python."
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
@@ -39,6 +39,6 @@ test = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/logansizemore/pycramer"
-Source = "https://github.com/logansizemore/pycramer"
-Issues = "https://github.com/logansizemore/pycramer/issues"
+Homepage = "https://github.com/sizemore0125/pycramer"
+Source = "https://github.com/sizemore0125/pycramer"
+Issues = "https://github.com/sizemore0125/pycramer/issues"

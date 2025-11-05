@@ -206,18 +206,23 @@ wheels = [
 [[package]]
 name = "pycramer"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.3.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+
+[package.optional-dependencies]
+test = [
     { name = "pytest" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "numpy" },
-    { name = "pytest", specifier = ">=8.4.2" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.4.2" },
 ]
+provides-extras = ["test"]
 
 [[package]]
 name = "pygments"

@@ -2,6 +2,12 @@
 
 This Python implementation of the Cramér two-sample test is based on the R package authored and maintained by Carsten Franz <carsten.franz@gmail.com>. All descriptive text below is reproduced from the original documentation provided with that package.
 
+## Installation
+
+```bash
+pip install pycramer
+```
+
 ## Cramer-Test for uni- and multivariate two-sample-problem
 
 Provides Python routine for the so called two-sample Cramer-Test. This nonparametric two-sample-test on equality of the underlying distributions can be applied to multivariate data as well as univariate data. It offers two possibilities to approximate the critical value both of which are included in this package.
