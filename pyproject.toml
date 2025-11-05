@@ -1,10 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "pycramer"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
+description = "Cramer two-sample test for univariate and multivariate datasets in Python."
+readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
+authors = [
+    { name = "Logan Sizemore" },
+]
+license = { file = "LICENCE" }
+keywords = [
+    "statistics",
+    "hypothesis testing",
+    "cramer test",
+    "nonparametric",
+    "two-sample",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
 dependencies = [
     "numpy",
+]
+
+[project.optional-dependencies]
+test = [
     "pytest>=8.4.2",
 ]
+
+[project.urls]
+Homepage = "https://github.com/logansizemore/pycramer"
+Source = "https://github.com/logansizemore/pycramer"
+Issues = "https://github.com/logansizemore/pycramer/issues"
