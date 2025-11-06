@@ -1,47 +1,33 @@
 [build-system]
-requires = ["setuptools>=65", "wheel", "numpy>=1.21"]
+requires = ["setuptools>=64", "wheel", "numpy>=1.23"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pycramer"
-version = "0.1.1"
-description = "Cramer two-sample test for univariate and multivariate datasets in Python."
-readme = { file = "README.md", content-type = "text/markdown" }
+version = "0.2.0"
+description = "Cramér two-sample test for univariate and multivariate datasets in Python."
+readme = "README.md"
 requires-python = ">=3.10"
-authors = [
-    { name = "Logan Sizemore" },
-]
 license = { file = "LICENCE" }
-keywords = [
-    "statistics",
-    "hypothesis testing",
-    "cramer test",
-    "nonparametric",
-    "two-sample",
+authors = [
+  { name = "Logan Sizemore" }
 ]
+keywords = ["statistics", "cramer", "two-sample", "nonparametric"]
 classifiers = [
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Topic :: Scientific/Engineering :: Mathematics",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: C++",
+  "Topic :: Scientific/Engineering :: Mathematics"
 ]
 dependencies = [
-    "numpy",
-    "setuptools>=80.9.0",
-]
-
-[project.optional-dependencies]
-test = [
-    "pytest>=8.4.2",
+  "numpy>=1.23"
 ]
 
 [project.urls]
 Homepage = "https://github.com/sizemore0125/pycramer"
-Source = "https://github.com/sizemore0125/pycramer"
+Changelog = "https://github.com/sizemore0125/pycramer/blob/main/cramer/CHANGES"
 Issues = "https://github.com/sizemore0125/pycramer/issues"
-
-[tool.setuptools.packages.find]
-include = ["pycramer"]

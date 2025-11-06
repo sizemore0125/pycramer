@@ -740,78 +740,6 @@ PyObject* cramer_statistic_from_data(PyObject*, PyObject* args) {
     return PyFloat_FromDouble(static_cast<double>(result));
 }
 
-PyObject* apply_builtin_kernel(PyObject*, PyObject* args) {
-    PyObject* lookup_obj = nullptr;
-    int kernel_id = 0;
-    if (!PyArg_ParseTuple(args, "Oi", &lookup_obj, &kernel_id)) {
-        return nullptr;
-    }
-
-    PyArrayObject* lookup = reinterpret_cast<PyArrayObject*>(
-        PyArray_FROM_OTF(lookup_obj, NPY_DOUBLE, NPY_ARRAY_INOUT_ARRAY2));
-    if (lookup == nullptr) {
-        return nullptr;
-    }
-
-    auto* data = static_cast<double*>(PyArray_DATA(lookup));
-    const npy_intp size = PyArray_SIZE(lookup);
-    KernelId id = static_cast<KernelId>(kernel_id);
-
-    auto transform_block = [&](npy_intp start, npy_intp end) {
-        for (npy_intp idx = start; idx < end; ++idx) {
-            double val = data[idx];
-            if (!apply_kernel_value(id, val)) {
-                return false;
-            }
-            data[idx] = val;
-        }
-        return true;
-    };
-
-    std::atomic<bool> ok(true);
-    int worker_count = static_cast<int>(std::thread::hardware_concurrency());
-    if (worker_count <= 1 || size < (1 << 15)) {
-        ok.store(transform_block(0, size), std::memory_order_relaxed);
-    } else {
-        std::vector<std::thread> threads;
-        threads.reserve(worker_count);
-        const npy_intp chunk = (size + worker_count - 1) / worker_count;
-        Py_BEGIN_ALLOW_THREADS;
-        for (int w = 0; w < worker_count; ++w) {
-            const npy_intp start = w * chunk;
-            const npy_intp end = std::min(size, start + chunk);
-            if (start >= end) {
-                continue;
-            }
-            threads.emplace_back([&, start, end]() {
-                if (!transform_block(start, end)) {
-                    ok.store(false, std::memory_order_relaxed);
-                }
-            });
-        }
-        for (auto& th : threads) {
-            if (th.joinable()) {
-                th.join();
-            }
-        }
-        Py_END_ALLOW_THREADS;
-    }
-
-    if (!ok.load(std::memory_order_relaxed)) {
-        PyArray_DiscardWritebackIfCopy(lookup);
-        Py_DECREF(lookup);
-        PyErr_SetString(PyExc_ValueError, "Unknown kernel id.");
-        return nullptr;
-    }
-
-    if (PyArray_ResolveWritebackIfCopy(lookup) < 0) {
-        Py_DECREF(lookup);
-        return nullptr;
-    }
-    Py_DECREF(lookup);
-    Py_RETURN_NONE;
-}
-
 PyMethodDef METHODS[] = {
     {"calculate_lookup_matrix", reinterpret_cast<PyCFunction>(calculate_lookup_matrix), METH_VARARGS,
      "Compute pairwise squared distances for rows of the input array."},
@@ -825,8 +753,6 @@ PyMethodDef METHODS[] = {
      "Generate bootstrap statistics using native resampling."},
     {"cramer_statistic_from_data", reinterpret_cast<PyCFunction>(cramer_statistic_from_data), METH_VARARGS,
      "Compute the Cramér statistic directly from raw data for built-in kernels."},
-    {"apply_builtin_kernel", reinterpret_cast<PyCFunction>(apply_builtin_kernel), METH_VARARGS,
-     "Apply an in-place kernel transformation to the lookup matrix."},
     {nullptr, nullptr, 0, nullptr}};
 
 PyModuleDef MODULE = {

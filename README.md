@@ -11,7 +11,13 @@ pip install pycramer
 
 ## Cramer-Test for uni- and multivariate two-sample-problem
 
-Provides Python routine for the so called two-sample Cramer-Test. This nonparametric two-sample-test on equality of the underlying distributions can be applied to multivariate data as well as univariate data. It offers two possibilities to approximate the critical value both of which are included in this package.
+Provides Python routine for the so called two-sample Cramer-Test. This nonparametric two-sample-test on equality of the underlying distributions can be applied to multivariate data as well as univariate data. It offers two possibilities to approximate the critical value both of which are included in this package and now evaluates the heavy numerical work in native C++, matching the reference R implementation within tight tolerances.
+
+### Highlights
+
+- Native C++ distance, kernel, and bootstrap routines for significant speed-ups (2×–3× over pure Python on large problems).
+- Optional `workers` parameter to parallelise native bootstrap draws while keeping reproducibility.
+- Performance regression tests that compare directly against the original R package across high-dimensional, unbalanced, and alternative-kernel scenarios.
 
 ## Perform Cramer-Test for uni- and multivariate two-sample-problem
 
@@ -32,6 +38,7 @@ Both univariate and multivariate data is possible. For calculation of the critic
 - **K**: Gives the upper value up to which the integral for the calculation of the distribution function out of the characteristic function (Gurlands formula) is evaluated. The default ist 160. Careful: When increasing `K` it is necessary to increase `max_m` as well since the resolution of the points where the distribution function is calculated is `2π/K`. Thus, if just `K` is increased the maximum value, where the distribution function is calculated is lower. When using Monte-Carlo-bootstrap methods, this variable is unused.
 
 - **random_state**: Optional seed or random generator for reproducibility. When using Monte-Carlo-bootstrap methods, this controls the random draws unless explicit resamples are supplied.
+- **workers**: Optional positive integer limiting the number of native worker threads used for bootstrap acceleration. Defaults to the detected core count.
 
 - **resamples**: Optional index matrix providing explicit bootstrap or permutation resamples. When supplied, `replicates` and `random_state` are ignored.
 
@@ -71,7 +78,7 @@ The function $\\phi$ is the kernel function mentioned in the Parameters section.
 
 ## Examples
 
-```
+```python
 # comparison of two univariate normal distributions
 import numpy as np
 from pycramer import cramer_test, phi_bahr
