@@ -1,6 +1,6 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=65", "wheel", "numpy>=1.21"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "pycramer"
@@ -30,6 +30,7 @@ classifiers = [
 ]
 dependencies = [
     "numpy",
+    "setuptools>=80.9.0",
 ]
 
 [project.optional-dependencies]
@@ -41,3 +42,6 @@ test = [
 Homepage = "https://github.com/sizemore0125/pycramer"
 Source = "https://github.com/sizemore0125/pycramer"
 Issues = "https://github.com/sizemore0125/pycramer/issues"
+
+[tool.setuptools.packages.find]
+include = ["pycramer"]

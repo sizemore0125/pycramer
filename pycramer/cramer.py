@@ -24,7 +24,23 @@ from typing import Callable, Optional, Sequence, Union
 
 import numpy as np
 
+from ._lookup import (
+    calculate_lookup_matrix,
+    calculate_lookup_matrix_with_kernel,
+    cramer_statistic as _cramer_statistic_native,
+    cramer_statistic_batch as _cramer_statistic_batch_native,
+    cramer_bootstrap_random as _cramer_bootstrap_random,
+    cramer_statistic_from_data as _cramer_statistic_from_data,
+)
+
 Kernel = Callable[[np.ndarray], np.ndarray]
+
+
+@dataclass(frozen=True)
+class KernelSpec:
+    label: str
+    fn: Kernel
+    builtin_id: Optional[int]
 
 
 @dataclass
@@ -67,62 +83,27 @@ class CramerTestResult:
 
 
 def phi_cramer(x: np.ndarray) -> np.ndarray:
-    """Compute the default Cramér kernel.
-
-    Args:
-        x (np.ndarray): Squared distances between observations.
-
-    Returns:
-        np.ndarray: Kernel-transformed distances.
-    """
+    """Compute the default Cramér kernel."""
     return 0.5 * np.sqrt(x)
 
 
 def phi_bahr(x: np.ndarray) -> np.ndarray:
-    """Compute the Bahr kernel transformation.
-
-    Args:
-        x (np.ndarray): Squared distances between observations.
-
-    Returns:
-        np.ndarray: Kernel-transformed distances.
-    """
+    """Compute the Bahr kernel transformation."""
     return 1.0 - np.exp(-0.5 * x)
 
 
 def phi_log(x: np.ndarray) -> np.ndarray:
-    """Compute the logarithmic kernel transformation.
-
-    Args:
-        x (np.ndarray): Squared distances between observations.
-
-    Returns:
-        np.ndarray: Kernel-transformed distances.
-    """
+    """Compute the logarithmic kernel transformation."""
     return np.log1p(x)
 
 
 def phi_frac_a(x: np.ndarray) -> np.ndarray:
-    """Compute the fractional-A kernel transformation.
-
-    Args:
-        x (np.ndarray): Squared distances between observations.
-
-    Returns:
-        np.ndarray: Kernel-transformed distances.
-    """
+    """Compute the fractional-A kernel transformation."""
     return 1.0 - 1.0 / (1.0 + x)
 
 
 def phi_frac_b(x: np.ndarray) -> np.ndarray:
-    """Compute the fractional-B kernel transformation.
-
-    Args:
-        x (np.ndarray): Squared distances between observations.
-
-    Returns:
-        np.ndarray: Kernel-transformed distances.
-    """
+    """Compute the fractional-B kernel transformation."""
     return 1.0 - 1.0 / np.square(1.0 + x)
 
 
@@ -132,6 +113,14 @@ KERNELS: dict[str, Kernel] = {
     "phiLog": phi_log,
     "phiFracA": phi_frac_a,
     "phiFracB": phi_frac_b,
+}
+
+_BUILTIN_KERNEL_IDS: dict[str, int] = {
+    "phiCramer": 0,
+    "phiBahr": 1,
+    "phiLog": 2,
+    "phiFracA": 3,
+    "phiFracB": 4,
 }
 
 
@@ -150,6 +139,7 @@ def cramer_test(
     max_m: int = 1 << 14,
     K: int = 160,
     random_state: RandomStateLike = None,
+    workers: Optional[int] = None,
     resamples: Optional[Sequence[Sequence[int]]] = None,
 ) -> CramerTestResult:
     """Perform the Cramér two-sample test.
@@ -165,6 +155,7 @@ def cramer_test(
         max_m (int, optional): Upper bound on FFT grid size for eigenvalue mode. Defaults to 1 << 14.
         K (int, optional): Integral upper limit used by the FFT inversion. Defaults to 160.
         random_state (RandomStateLike, optional): RNG seed or object for reproducibility. Defaults to None.
+        workers (Optional[int], optional): Maximum worker threads for native bootstrap acceleration. Defaults to None (auto).
         resamples (Optional[Sequence[Sequence[int]]], optional): Explicit bootstrap index matrix. Defaults to None.
 
     Returns:
@@ -179,20 +170,47 @@ def cramer_test(
     m, n = x_arr.shape[0], y_arr.shape[0]
     d = x_arr.shape[1]
     data = np.vstack([x_arr, y_arr])
+    data_c = np.asarray(data, dtype=float, order="C")
     N = m + n
 
-    lookup = _calculate_lookup_matrix(data)
-    kernel_fn = _resolve_kernel(kernel)
-    lookup = kernel_fn(lookup)
+    kernel_spec = _resolve_kernel_spec(kernel)
 
     method = (
         f"nonparametric Cramer-Test with kernel "
-        f"{kernel if isinstance(kernel, str) else kernel_fn.__name__}\n"
+        f"{kernel_spec.label}\n"
         "(on equality of two distributions)"
     )
 
+    worker_count = _validate_workers(workers)
+
+    statistic_fn = (
+        _cramer_statistic_numpy if resamples is not None else _cramer_statistic
+    )
+
+    if just_statistic and resamples is None and kernel_spec.builtin_id is not None:
+        statistic0 = float(
+            _cramer_statistic_from_data(data_c, int(m), int(kernel_spec.builtin_id))
+        )
+        return CramerTestResult(
+            method=method,
+            d=d,
+            m=m,
+            n=n,
+            statistic=statistic0,
+            conf_level=conf_level,
+            crit_value=0.0,
+            p_value=0.0,
+            result=0,
+            sim=sim,
+            replicates=0,
+            hypdist_x=None,
+            hypdist_Fx=None,
+            eigenvalues=None,
+        )
+
+    lookup = _build_lookup_table(data_c, kernel_spec)
     base_indices = np.arange(N, dtype=int)
-    statistic0 = _cramer_statistic(lookup, base_indices, m, n)
+    statistic0 = statistic_fn(lookup, base_indices, m)
 
     if just_statistic:
         return CramerTestResult(
@@ -245,16 +263,20 @@ def cramer_test(
     stats = _bootstrap_statistics(
         lookup=lookup,
         m=m,
-        n=n,
         N=N,
         replicates=replicates,
         sim=sim,
         random_state=random_state,
         resamples=resamples,
+        workers=worker_count,
+        statistic_fn=statistic_fn,
     )
 
     crit_value, p_value, hypdist_x, hypdist_Fx, decision = _evaluate_bootstrap(
-        statistic0, stats, conf_level
+        statistic0,
+        stats,
+        conf_level,
+        use_tolerance=statistic_fn is _cramer_statistic,
     )
 
     return CramerTestResult(
@@ -292,51 +314,34 @@ def _coerce_sample(sample: Union[Sequence[float], np.ndarray]) -> np.ndarray:
     return arr
 
 
-def _resolve_kernel(kernel: Union[str, Kernel]) -> Kernel:
-    """Resolve a kernel specification into a callable.
-
-    Args:
-        kernel (Union[str, Kernel]): Kernel name or callable.
-
-    Raises:
-        ValueError: If the named kernel is unknown.
-        TypeError: If the input is neither a string nor callable.
-
-    Returns:
-        Kernel: Kernel function mapping squared distances to transformed scores.
-    """
+def _resolve_kernel_spec(kernel: Union[str, Kernel]) -> KernelSpec:
+    """Resolve a kernel specification into a callable plus metadata."""
     if isinstance(kernel, str):
         try:
-            return KERNELS[kernel]
+            fn = KERNELS[kernel]
         except KeyError as exc:
             raise ValueError(f"Unknown kernel '{kernel}'.") from exc
+        return KernelSpec(
+            label=kernel, fn=fn, builtin_id=_BUILTIN_KERNEL_IDS.get(kernel)
+        )
     if callable(kernel):
-        return kernel
+        label = getattr(kernel, "__name__", "<lambda>")
+        return KernelSpec(label=label, fn=kernel, builtin_id=None)
     raise TypeError("kernel must be a string or a callable.")
 
 
-def _calculate_lookup_matrix(data: np.ndarray) -> np.ndarray:
-    """Construct the pairwise squared-distance matrix.
-
-    Args:
-        data (np.ndarray): Combined sample matrix of shape (m + n, d).
-
-    Returns:
-        np.ndarray: Symmetric squared-distance lookup table.
-    """
-    diff = data[:, None, :] - data[None, :, :]
-    return np.sum(diff * diff, axis=2)
-    # squared_norms = np.sum(data * data, axis=1, dtype=float)
-    # lookup = squared_norms[:, None] + squared_norms[None, :] - 2.0 * data @ data.T
-    # np.maximum(lookup, 0.0, out=lookup)
-    # return lookup
+def _build_lookup_table(data: np.ndarray, kernel_spec: KernelSpec) -> np.ndarray:
+    """Construct the pairwise lookup matrix, applying kernels in one pass when possible."""
+    if kernel_spec.builtin_id is not None:
+        return calculate_lookup_matrix_with_kernel(data, kernel_spec.builtin_id)
+    lookup = calculate_lookup_matrix(data)
+    return kernel_spec.fn(lookup)
 
 
 def _cramer_statistic(
     lookup: np.ndarray,
     indices: np.ndarray,
     m: int,
-    n: int,
 ) -> float:
     """Evaluate the Cramér statistic for a particular resample.
 
@@ -344,18 +349,36 @@ def _cramer_statistic(
         lookup (np.ndarray): Kernel-transformed distance matrix.
         indices (np.ndarray): Index vector partitioned into X then Y observations.
         m (int): Number of X observations.
-        n (int): Number of Y observations.
 
     Returns:
         float: Value of the Cramér two-sample statistic.
     """
-    x_idx = indices[:m]
-    y_idx = indices[m:]
+    indices_arr = np.asarray(indices, dtype=np.intp)
+    if indices_arr.ndim != 1:
+        raise ValueError("indices must be a one-dimensional array.")
+    if indices_arr.size != lookup.shape[0]:
+        raise ValueError("indices length must equal lookup dimension.")
+    return float(_cramer_statistic_native(lookup, indices_arr, int(m)))
+
+
+def _cramer_statistic_numpy(
+    lookup: np.ndarray,
+    indices: np.ndarray,
+    m: int,
+) -> float:
+    """Python fallback for statistic evaluation, used when exact parity is required."""
+    indices_arr = np.asarray(indices, dtype=np.intp)
+    if indices_arr.ndim != 1:
+        raise ValueError("indices must be a one-dimensional array.")
+    if indices_arr.size != lookup.shape[0]:
+        raise ValueError("indices length must equal lookup dimension.")
+    x_idx = indices_arr[:m]
+    y_idx = indices_arr[m:]
     term_xy = lookup[np.ix_(x_idx, y_idx)].sum()
     term_xx = lookup[np.ix_(x_idx, x_idx)].sum()
     term_yy = lookup[np.ix_(y_idx, y_idx)].sum()
     m_f = float(m)
-    n_f = float(n)
+    n_f = float(indices_arr.size - m)
     return (m_f * n_f / (m_f + n_f)) * (
         2.0 * term_xy / (m_f * n_f) - term_xx / (m_f * m_f) - term_yy / (n_f * n_f)
     )
@@ -364,53 +387,109 @@ def _cramer_statistic(
 def _bootstrap_statistics(
     lookup: np.ndarray,
     m: int,
-    n: int,
     N: int,
     replicates: int,
     sim: str,
     random_state: RandomStateLike,
     resamples: Optional[Sequence[Sequence[int]]],
+    workers: Optional[int],
+    statistic_fn: Callable[[np.ndarray, np.ndarray, int], float],
 ) -> np.ndarray:
-    """Generate bootstrap statistics using either supplied or random resamples.
-
-    Args:
-        lookup (np.ndarray): Kernel-transformed distance matrix.
-        m (int): Number of X observations.
-        n (int): Number of Y observations.
-        N (int): Total number of observations.
-        replicates (int): Number of generated bootstrap draws when `resamples` is None.
-        sim (str): Resampling scheme (`ordinary` or `permutation`).
-        random_state (RandomStateLike): Random seed or generator input.
-        resamples (Optional[Sequence[Sequence[int]]]): Explicit index matrix overriding random draws.
-
-    Returns:
-        np.ndarray: Vector of bootstrap statistic values.
-    """
+    """Generate bootstrap statistics using either supplied or random resamples."""
     if resamples is not None:
-        resample_array = np.asarray(resamples, dtype=int)
-        if resample_array.ndim != 2 or resample_array.shape[1] != N:
-            raise ValueError("Each resample must have length m + n.")
-        stats = np.empty(resample_array.shape[0], dtype=float)
-        for idx, resample in enumerate(resample_array):
-            stats[idx] = _cramer_statistic(lookup, resample, m, n)
-        return stats
+        return _bootstrap_from_resamples(resamples, lookup, m, N, statistic_fn)
 
     if replicates <= 0:
         raise ValueError("replicates must be positive when resamples are not provided.")
 
-    rng = _resolve_rng(random_state)
-    stats = np.empty(replicates, dtype=float)
+    seed_payload = _resolve_native_bootstrap_seed(random_state)
+    if statistic_fn is _cramer_statistic and seed_payload is not None:
+        native = _bootstrap_via_native(
+            lookup=lookup,
+            m=m,
+            replicates=replicates,
+            sim=sim,
+            seed=seed_payload,
+            workers=workers,
+        )
+        if native is not None:
+            return native
 
+    rng = _resolve_rng(random_state)
+    return _bootstrap_via_python(
+        lookup=lookup,
+        m=m,
+        N=N,
+        replicates=replicates,
+        sim=sim,
+        rng=rng,
+        statistic_fn=statistic_fn,
+    )
+
+
+def _bootstrap_from_resamples(
+    resamples: Sequence[Sequence[int]],
+    lookup: np.ndarray,
+    m: int,
+    N: int,
+    statistic_fn: Callable[[np.ndarray, np.ndarray, int], float],
+) -> np.ndarray:
+    resample_array = np.asarray(resamples, dtype=np.intp, order="C")
+    if resample_array.ndim != 2 or resample_array.shape[1] != N:
+        raise ValueError("Each resample must have length m + n.")
+    if statistic_fn is _cramer_statistic:
+        return np.asarray(
+            _cramer_statistic_batch_native(lookup, resample_array, int(m))
+        )
+    stats = np.empty(resample_array.shape[0], dtype=float)
+    for idx, resample in enumerate(resample_array):
+        stats[idx] = statistic_fn(lookup, resample, m)
+    return stats
+
+
+def _bootstrap_via_native(
+    lookup: np.ndarray,
+    m: int,
+    replicates: int,
+    sim: str,
+    seed: int,
+    workers: Optional[int],
+) -> Optional[np.ndarray]:
+    if sim not in {"ordinary", "permutation"}:
+        return None
+    sim_kind = 0 if sim == "ordinary" else 1
+    worker_count = -1 if workers is None else int(workers)
+    return np.asarray(
+        _cramer_bootstrap_random(
+            lookup,
+            int(m),
+            int(replicates),
+            sim_kind,
+            int(seed),
+            worker_count,
+        )
+    )
+
+
+def _bootstrap_via_python(
+    lookup: np.ndarray,
+    m: int,
+    N: int,
+    replicates: int,
+    sim: str,
+    rng: RNG,
+    statistic_fn: Callable[[np.ndarray, np.ndarray, int], float],
+) -> np.ndarray:
+    stats = np.empty(replicates, dtype=float)
     for r in range(replicates):
         if sim == "ordinary":
             if hasattr(rng, "integers"):
-                indices = rng.integers(0, N, size=N)
+                indices = rng.integers(0, N, size=N, dtype=np.intp)
             else:
-                indices = rng.randint(0, N, size=N)
+                indices = rng.randint(0, N, size=N).astype(np.intp, copy=False)
         else:
-            indices = rng.permutation(N)
-        stats[r] = _cramer_statistic(lookup, np.asarray(indices, dtype=int), m, n)
-
+            indices = np.asarray(rng.permutation(N), dtype=np.intp)
+        stats[r] = statistic_fn(lookup, indices, m)
     return stats
 
 
@@ -439,10 +518,35 @@ def _resolve_rng(random_state: RandomStateLike) -> RNG:
     )
 
 
+def _resolve_native_bootstrap_seed(random_state: RandomStateLike) -> Optional[int]:
+    """Return a 64-bit seed for the native bootstrap, or None if fallback is required."""
+    if random_state is None:
+        seed_seq = np.random.SeedSequence()
+        seed = int(seed_seq.generate_state(1, dtype=np.uint64)[0])
+        return seed
+    if isinstance(random_state, Integral):
+        return int(random_state) & ((1 << 64) - 1)
+    return None
+
+
+def _validate_workers(workers: Optional[int]) -> Optional[int]:
+    """Validate worker count input."""
+    if workers is None:
+        return None
+    if not isinstance(workers, Integral):
+        raise TypeError("workers must be an integer or None.")
+    workers_int = int(workers)
+    if workers_int <= 0:
+        raise ValueError("workers must be positive when specified.")
+    return workers_int
+
+
 def _evaluate_bootstrap(
     statistic0: float,
     bootstrap_stats: np.ndarray,
     conf_level: float,
+    *,
+    use_tolerance: bool,
 ) -> tuple[float, float, np.ndarray, np.ndarray, int]:
     """Compute critical value, p-value, and empirical distribution from bootstrap draws.
 
@@ -454,6 +558,7 @@ def _evaluate_bootstrap(
     Returns:
         tuple[float, float, np.ndarray, np.ndarray, int]: Critical value, p-value, sorted statistics, empirical CDF, and decision indicator.
     """
+    bootstrap_stats = np.asarray(bootstrap_stats, dtype=float)
     sorted_stats = np.sort(bootstrap_stats)
     hypdist_x = sorted_stats.copy()
     hypdist_Fx = np.arange(1, sorted_stats.size + 1, dtype=float) / sorted_stats.size
@@ -462,8 +567,14 @@ def _evaluate_bootstrap(
     quantile_index = max(1, min(quantile_index, sorted_stats.size)) - 1
     crit_value = sorted_stats[quantile_index]
 
-    less_than = np.sum(bootstrap_stats < statistic0)
-    equal_to = np.sum(bootstrap_stats == statistic0)
+    if use_tolerance:
+        eps = np.finfo(float).eps
+        tol = max(1.0, abs(statistic0)) * eps * 32.0
+        less_than = np.sum(bootstrap_stats < statistic0 - tol)
+        equal_to = np.sum(np.abs(bootstrap_stats - statistic0) <= tol)
+    else:
+        less_than = np.sum(bootstrap_stats < statistic0)
+        equal_to = np.sum(bootstrap_stats == statistic0)
     ties = equal_to + 1  # include statistic itself
     rank = less_than + (ties + 1) / 2.0
     p_value = 1.0 - rank / (bootstrap_stats.size + 1.0)
