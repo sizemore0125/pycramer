@@ -54,7 +54,7 @@ class CramerTestResult:
             details = (
                 f"critical value for confidence level {self.conf_level * 100:.1f}% : {self.crit_value}\n"
                 f"observed statistic {self.statistic}, so that\n"
-                f"\t hypothesis (\"x is distributed as y\") is {decision}.\n"
+                f'\t hypothesis ("x is distributed as y") is {decision}.\n'
                 f"estimated p-value = {self.p_value}\n"
             )
             source = (
@@ -213,6 +213,8 @@ def cramer_test(
         )
 
     if sim == "eigenvalue":
+        if resamples is not None:
+            raise ValueError("resamples should be None when sim is 'eigenvalue'.")
         eigenvalues, dist_x, dist_Fx, crit_value = _eigenvalue_path(
             lookup, conf_level, max_m, K
         )
@@ -324,6 +326,10 @@ def _calculate_lookup_matrix(data: np.ndarray) -> np.ndarray:
     """
     diff = data[:, None, :] - data[None, :, :]
     return np.sum(diff * diff, axis=2)
+    # squared_norms = np.sum(data * data, axis=1, dtype=float)
+    # lookup = squared_norms[:, None] + squared_norms[None, :] - 2.0 * data @ data.T
+    # np.maximum(lookup, 0.0, out=lookup)
+    # return lookup
 
 
 def _cramer_statistic(
@@ -435,7 +441,7 @@ def _resolve_rng(random_state: RandomStateLike) -> RNG:
 
 def _evaluate_bootstrap(
     statistic0: float,
-   bootstrap_stats: np.ndarray,
+    bootstrap_stats: np.ndarray,
     conf_level: float,
 ) -> tuple[float, float, np.ndarray, np.ndarray, int]:
     """Compute critical value, p-value, and empirical distribution from bootstrap draws.
@@ -543,7 +549,9 @@ def _cramer_kritwert_fft(
 
     half = M // 2
     if Fx[half - 1] < conf_level:
-        warnings.warn("Quantile calculation discrepancy. Try to increase K!", RuntimeWarning)
+        warnings.warn(
+            "Quantile calculation discrepancy. Try to increase K!", RuntimeWarning
+        )
 
     idx = int(np.argmin(np.abs(Fx[:half] - conf_level)))
     if Fx[idx] > conf_level:
