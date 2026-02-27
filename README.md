@@ -1,7 +1,7 @@
-[![GPLv3 license](https://img.shields.io/badge/License-GPLv3-blue.svg)](http://perso.crans.org/besson/LICENSE.html) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/pycramer?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/pycramer)
+[![GPLv3 license](https://img.shields.io/badge/License-GPLv3-blue.svg)](http://perso.crans.org/besson/LICENSE.html) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/pycramer?period=total&units=INTERNATIONAL_SYSTEM&left_color=GREY&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/pycramer)
 ## Attribution
 
-This Python implementation of the Cramér two-sample test is based on the R package authored and maintained by Carsten Franz <carsten.franz@gmail.com>. All descriptive text below is reproduced from the original documentation provided with that package.
+This Python implementation of the Cramér two-sample test is based on the R package authored and maintained by Carsten Franz <carsten.franz@gmail.com>. All descriptive text below is reproduced from the original documentation provided with that package. Carsten Franz does not maintain this repo. Any inqueries should be directed to the repository owner.
 
 ## Installation
 
@@ -83,22 +83,17 @@ The function $\\phi$ is the kernel function mentioned in the Parameters section.
 import numpy as np
 from pycramer import cramer_test, phi_bahr
 
-rng = np.random.default_rng()
-x = rng.normal(0, 1, size=20)
-y = rng.normal(0.5, 1, size=50)
+x = np.random.normal(0, 1, size=20)
+y = np.random.normal(0.5, 1, size=50)
 cramer_test(x, y)
 
 # comparison of two multivariate normal distributions with permutation test:
-from numpy.random import default_rng
-
-rng = default_rng()
-x = rng.multivariate_normal(mean=(0, 0), cov=np.diag((1, 1)), size=20)
-y = rng.multivariate_normal(mean=(0.3, 0), cov=np.diag((1, 1)), size=50)
+x = np.random.multivariate_normal(mean=(0, 0), cov=np.diag((1, 1)), size=20)
+y = np.random.multivariate_normal(mean=(0.3, 0), cov=np.diag((1, 1)), size=50)
 cramer_test(x, y, sim="permutation")
 
 # comparison of two univariate normal distributions with Bahrs Kernel
-rng = default_rng()
-x = rng.normal(0, 1, size=20)
-y = rng.normal(0, 2, size=50)
+x = np.random.normal(0, 1, size=20)
+y = np.random.normal(0, 2, size=50)
 cramer_test(x, y, sim="eigenvalue", kernel=phi_bahr)
 ```
